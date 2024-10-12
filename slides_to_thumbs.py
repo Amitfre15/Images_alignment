@@ -5,6 +5,9 @@ from PIL import Image
 import cv2
 
 OPENSLIDE_PATH = r"C:\Program Files\openslide-bin-4.0.0.3-windows-x64\openslide-bin-4.0.0.3-windows-x64\bin"
+DESIRED_MPP = 0.5
+# SLIDE_PATCH_SIZE = 256
+SLIDE_PATCH_SIZE = 4000
 
 if hasattr(os, 'add_dll_directory'):
     # Windows
@@ -123,7 +126,60 @@ def rotate_coordinates(corners, angle, image_center=None):
     return [(new_x1, new_y1), (new_x2, new_y2), (new_x3, new_y3), (new_x4, new_y4)]
 
 
-def extract_and_show_patch(slide, thumb, rotation_mat, slide_coords=None, thumb_coords=None, prefix=''):
+def get_padded_slide_coords(slide_coords: list, slide_width: int, slide_height: int):
+    # Calculate the original patch width and height
+    patch_width = slide_coords[2] - slide_coords[0]
+    patch_height = slide_coords[3] - slide_coords[1]
+
+    # Calculate the padding using 2 scaling factor
+    scaling_factor = 2
+    padding_width = int((scaling_factor - 1) * patch_width / 2)
+    padding_height = int((scaling_factor - 1) * patch_height / 2)
+
+    # Add padding to the coordinates
+    padded_slide_coords = (
+        max(0, slide_coords[0] - padding_width),
+        max(0, slide_coords[1] - padding_height),
+        min(slide_width, slide_coords[2] + padding_width),
+        min(slide_height, slide_coords[3] + padding_height)
+    )
+
+    return padded_slide_coords, patch_width, patch_height
+
+
+def extract_padded_slide_patch(padded_slide_coords: list, slide, patch_width: int, patch_height: int, rotation_angle: float):
+    # Extract padded slide patch
+    padded_slide_width = padded_slide_coords[2] - padded_slide_coords[0]
+    padded_slide_height = padded_slide_coords[3] - padded_slide_coords[1]
+    slide_patch = slide.read_region((padded_slide_coords[0], padded_slide_coords[1]), 0,
+                                    (padded_slide_width, padded_slide_height))
+    angle_rad = math.radians(rotation_angle)
+    actual_pad_width = (slide_patch.width - patch_width) // 2
+    actual_pad_height = (slide_patch.height - patch_height) // 2
+    corners = [actual_pad_width, actual_pad_height,
+               slide_patch.width - actual_pad_width, actual_pad_height,
+               actual_pad_width, slide_patch.height - actual_pad_height,
+               slide_patch.width - actual_pad_width, slide_patch.height - actual_pad_height]
+    slide_patch = slide_patch.rotate(rotation_angle, expand=True)
+
+    return slide_patch, corners
+
+
+def crop_padded_patch(corners: list, rotation_angle: float, slide_patch):
+    # Crop the padded patch
+    rotated_corners = rotate_coordinates(corners=corners, angle=rotation_angle)
+    new_center = slide_patch.width // 2, slide_patch.height // 2
+    xs = [rc[0] + new_center[0] for rc in rotated_corners]
+    ys = [rc[1] + new_center[1] for rc in rotated_corners]
+    small_x, big_x = min(xs), max(xs)
+    small_y, big_y = min(ys), max(ys)
+    crop_box_slide = (small_x, small_y, big_x, big_y)
+    slide_patch = slide_patch.crop(crop_box_slide)
+
+    return slide_patch
+
+
+def extract_and_show_patch(slide, thumb, rotation_mat=None, rotation_angle=None, slide_coords=None, thumb_coords=None, prefix=''):
     """
     Extracts patches from the slide and the thumbnail based on the given slide coordinates and shows them.
 
@@ -137,66 +193,49 @@ def extract_and_show_patch(slide, thumb, rotation_mat, slide_coords=None, thumb_
     - None, but displays the extracted patches.
     """
     if slide_coords:
-        # Calculate the original patch width and height
-        patch_width = slide_coords[2] - slide_coords[0]
-        patch_height = slide_coords[3] - slide_coords[1]
-
-        # Calculate the padding using sqrt(2) scaling factor
-        # scaling_factor = math.sqrt(2)
-        scaling_factor = 2
-        padding_width = int((scaling_factor - 1) * patch_width / 2)
-        padding_height = int((scaling_factor - 1) * patch_height / 2)
-
-        # Add padding to the coordinates
-        padded_slide_coords = (
-            max(0, slide_coords[0] - padding_width),
-            max(0, slide_coords[1] - padding_height),
-            min(slide.dimensions[0], slide_coords[2] + padding_width),
-            min(slide.dimensions[1], slide_coords[3] + padding_height)
-        )
+        # padded_slide_coords, patch_width, patch_height = get_padded_slide_coords(slide_coords=slide_coords,
+        #                                                                          slide_width=slide.dimensions[0],
+        #                                                                          slide_height=slide.dimensions[1])
 
         # Map the slide coordinates to thumbnail coordinates
         thumb_coord1 = slide_to_thumb_coord(slide, thumb, (slide_coords[0], slide_coords[1]))
         thumb_coord2 = slide_to_thumb_coord(slide, thumb, (slide_coords[2], slide_coords[3]))
         thumb_coords = list(thumb_coord1) + list(thumb_coord2)
-        rotation_angle = (rotation_mat[thumb_coords[0], thumb_coords[1]][-1] / 100) - 90
+        # the first slides were 90 degrees rotated
+        # rotation_angle = (rotation_mat[thumb_coords[0], thumb_coords[1]][-1] / 100) - 90
+        # rotation_angle = 0
 
-        # Extract padded slide patch
-        padded_slide_width = padded_slide_coords[2] - padded_slide_coords[0]
-        padded_slide_height = padded_slide_coords[3] - padded_slide_coords[1]
-        slide_patch = slide.read_region((padded_slide_coords[0], padded_slide_coords[1]), 0,
-                                        (padded_slide_width, padded_slide_height))
-        actual_pad_width = (slide_patch.width - patch_width) // 2
-        actual_pad_height = (slide_patch.height - patch_height) // 2
-        corners = [actual_pad_width, actual_pad_height,
-                   slide_patch.width - actual_pad_width, actual_pad_height,
-                   actual_pad_width, slide_patch.height - actual_pad_height,
-                   slide_patch.width - actual_pad_width, slide_patch.height - actual_pad_height]
-        slide_patch = slide_patch.rotate(rotation_angle, expand=True)
-
-        # Crop the padded patch
-        rotated_corners = rotate_coordinates(corners=corners, angle=rotation_angle)
-        new_center = slide_patch.width // 2, slide_patch.height // 2
-        xs = [rc[0] + new_center[0] for rc in rotated_corners]
-        ys = [rc[1] + new_center[1] for rc in rotated_corners]
-        small_x, big_x = min(xs), max(xs)
-        small_y, big_y = min(ys), max(ys)
-        crop_box_slide = (small_x, small_y, big_x, big_y)
-        slide_patch = slide_patch.crop(crop_box_slide)
+        # slide_patch, corners = extract_padded_slide_patch(padded_slide_coords=padded_slide_coords, slide=slide,
+        #                                                   patch_width=patch_width, patch_height=patch_height,
+        #                                                   rotation_angle=rotation_angle)
+        #
+        # slide_patch = crop_padded_patch(corners=corners, rotation_angle=rotation_angle, slide_patch=slide_patch)
+        slide_patch = slide.read_region((slide_coords[0], slide_coords[1]), 0,
+                                        (slide_coords[2] - slide_coords[0], slide_coords[3] - slide_coords[1]))
     else:
         # Map the thumbnail coordinates to slide coordinates
         slide_coord1 = thumb_to_slide_coord(slide=slide, thumb=thumb, thumb_coord=(thumb_coords[0], thumb_coords[1]))
         slide_coord2 = thumb_to_slide_coord(slide=slide, thumb=thumb, thumb_coord=(thumb_coords[2], thumb_coords[3]))
         slide_coords = list(slide_coord1) + list(slide_coord2)
-        # rotation_angle = rotation_mat[thumb_coords[0], thumb_coords[1]][-1] / 100
-        slide_patch = slide.read_region((slide_coords[0], slide_coords[1]), 0,
-                                        (slide_coords[2] - slide_coords[0], slide_coords[3] - slide_coords[1]))
+        # rotation_angle = rotation_mat[int(thumb_coords[0]), int(thumb_coords[1])][-1] / 100
+
+        padded_slide_coords, patch_width, patch_height = get_padded_slide_coords(slide_coords=slide_coords,
+                                                                                 slide_width=slide.dimensions[0],
+                                                                                 slide_height=slide.dimensions[1])
+        slide_patch, corners = extract_padded_slide_patch(padded_slide_coords=padded_slide_coords, slide=slide,
+                                                          patch_width=patch_width, patch_height=patch_height,
+                                                          rotation_angle=rotation_angle)
+        slide_patch = crop_padded_patch(corners=corners, rotation_angle=rotation_angle, slide_patch=slide_patch)
+
+        # slide_patch = slide.read_region((slide_coords[0], slide_coords[1]), 0,
+        #                                 (slide_coords[2] - slide_coords[0], slide_coords[3] - slide_coords[1]))
+        # slide_patch = slide_patch.rotate(rotation_angle, expand=True)
 
     # Extract thumb patches
     thumb_patch = thumb.crop((thumb_coords[0], thumb_coords[1], thumb_coords[2], thumb_coords[3]))
 
     # Convert slide patch to RGB (it might be RGBA, depending on the format)
-    slide_patch_rgb = slide_patch.convert("RGB")
+    slide_patch_rgb = slide_patch.convert("RGB").resize((SLIDE_PATCH_SIZE, SLIDE_PATCH_SIZE))
     # slide_patch_rgb.show(title="Slide Patch")
     # thumb_patch = thumb_patch.rotate(rotation_angle, expand=True)
 
@@ -211,8 +250,10 @@ def extract_and_show_patch(slide, thumb, rotation_mat, slide_coords=None, thumb_
 
 
 def main():
-    h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_e.mrxs'))
-    thumb = Image.open(os.path.join('slides_to_amit', '0081_0_thumb_20-10015_1_1_e.jpg'))
+    # h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_e.mrxs'))
+    h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_a.mrxs'))
+    # thumb = Image.open(os.path.join('slides_to_amit', '0081_0_thumb_20-10015_1_1_e.jpg'))
+    thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0030_0_thumb_17-8750_2_10_a.jpg'))
 
     x_origin = int(h_e_slide.properties.get('openslide.bounds-x'))
     y_origin = int(h_e_slide.properties.get('openslide.bounds-y'))
@@ -220,24 +261,33 @@ def main():
     mpp_y = float(h_e_slide.properties.get('openslide.mpp-y'))
 
     # qupath_location = (5500, 28750)
-    qupath_location = (5500, 28000)
+    # qupath_location = (5500, 28000)
+    # qupath_location = (5000, 26500)  # 20-10015 slides
+    # qupath_location = (4300, 29100)  # 17-8750 slides
+    # qupath_location = (4150, 29000)  # 17-8750 slides
+    qupath_location = (3000, 29000)  # 17-8750 slides
     openslide_location = (round(qupath_location[0] / mpp_x) + x_origin, round(qupath_location[1] / mpp_y) + y_origin)
+    mpp_scale_factor = DESIRED_MPP / mpp_x
+    scaled_patch_size = int(SLIDE_PATCH_SIZE * mpp_scale_factor)
 
-    width = int(h_e_slide.properties.get(openslide.PROPERTY_NAME_BOUNDS_WIDTH))
-    height = int(h_e_slide.properties.get(openslide.PROPERTY_NAME_BOUNDS_HEIGHT))
+    # width = int(h_e_slide.properties.get(openslide.PROPERTY_NAME_BOUNDS_WIDTH))
+    # height = int(h_e_slide.properties.get(openslide.PROPERTY_NAME_BOUNDS_HEIGHT))
 
-    x_end, y_end = h_e_slide.level_dimensions[0]
-    # The following should hold:
-    x_end_validation = x_origin + width
-    y_end_validation = y_origin + height
+    # x_end, y_end = h_e_slide.level_dimensions[0]
+    # # The following should hold:
+    # x_end_validation = x_origin + width
+    # y_end_validation = y_origin + height
 
-    slide_coords = tuple(list(openslide_location) + [cor + 8000 for cor in openslide_location])
-    # rotation_img = Image.open(os.path.join('slides_to_amit', 'map_HE_20-10015_1_1_e_to_Her2_20-10015_1_1_m.png'))
-    rotation_img = cv2.imread(os.path.join('slides_to_amit', 'map_HE_20-10015_1_1_e_to_Her2_20-10015_1_1_m.png'), cv2.IMREAD_UNCHANGED)
-    rotation_img = cv2.cvtColor(rotation_img, cv2.COLOR_BGR2RGB)
+    slide_coords = tuple(list(openslide_location) + [cor + scaled_patch_size for cor in openslide_location])
+    # rotation_img = cv2.imread(os.path.join('slides_to_amit', 'map_HE_20-10015_1_1_e_to_Her2_20-10015_1_1_m.png'), cv2.IMREAD_UNCHANGED)
+    # rotation_img = cv2.imread(os.path.join('slides_to_amit2', '17-8750_2_10', 'map_HE_17-8750_2_10_a_to_Her2_17-8750_2_10_d.png'), cv2.IMREAD_UNCHANGED)
+    rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_labeled_to_Her2_17-8750_2_10_d_labeled.png'), cv2.IMREAD_UNCHANGED)
+    # rotation_img = cv2.cvtColor(rotation_img, cv2.COLOR_BGR2RGB)
     rotation_mat = np.array(rotation_img).transpose(1, 0, 2)
 
-    thumb_coords = extract_and_show_patch(h_e_slide, thumb, rotation_mat, slide_coords=slide_coords)
+    thumb_coords = extract_and_show_patch(h_e_slide, thumb, rotation_mat=rotation_mat, slide_coords=slide_coords)
+    rotation_angle = rotation_mat[int(thumb_coords[0]), int(thumb_coords[1])][-1] / 100
+    # rotation_angle = 0
     thumb_center = [(thumb_coords[0] + thumb_coords[2]) // 2, (thumb_coords[1] + thumb_coords[3]) // 2]
     thumb_width, thumb_height = thumb_coords[2] - thumb_coords[0], thumb_coords[3] - thumb_coords[1]
     # corresp_ihc_thumb_coords = rotation_mat[[thumb_coords[0], thumb_coords[2]], [thumb_coords[1], thumb_coords[3]]]
@@ -245,20 +295,24 @@ def main():
     ihc_center = list(rotation_mat[thumb_center[0], thumb_center[1]][:2])
 
     # IHC
-    ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_m.mrxs'))
-    ihc_thumb = Image.open(os.path.join('slides_to_amit', '0004_0_thumb_20-10015_1_1_m.jpg'))
+    # ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_m.mrxs'))
+    ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_d.mrxs'))
+    # ihc_thumb = Image.open(os.path.join('slides_to_amit', '0004_0_thumb_20-10015_1_1_m.jpg'))
+    ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0000_0_thumb_17-8750_2_10_d_labeled.jpg'))
     x_ratio = ihc_thumb.width / thumb.width
     y_ratio = ihc_thumb.height / thumb.height
     corresp_ihc_thumb_coords = [max(0, ihc_center[0] - (thumb_width // 2) * x_ratio),
                                 max(0, ihc_center[1] - (thumb_height // 2) * y_ratio),
-                                min(ihc_thumb.height, ihc_center[0] + (thumb_width // 2) * x_ratio),  # rotation_mat is rotated by 90 deg
-                                min(ihc_thumb.width, ihc_center[1] + (thumb_height // 2) * y_ratio)]  # rotation_mat is rotated by 90 deg
+                                # min(ihc_thumb.height, ihc_center[0] + (thumb_width // 2) * x_ratio),  # rotation_mat is rotated by 90 deg
+                                min(ihc_thumb.width, ihc_center[0] + (thumb_width // 2) * x_ratio),  # rotation_mat is rotated by 90 deg
+                                # min(ihc_thumb.width, ihc_center[1] + (thumb_height // 2) * y_ratio)]  # rotation_mat is rotated by 90 deg
+                                min(ihc_thumb.height, ihc_center[1] + (thumb_height // 2) * y_ratio)]  # rotation_mat is rotated by 90 deg
     # rotation_mat is rotated by 90 deg
-    corresp_ihc_thumb_coords = [ihc_thumb.width - corresp_ihc_thumb_coords[i + 1] if i % 2 == 0 else corresp_ihc_thumb_coords[i - 1] for i, coord in
-                                enumerate(corresp_ihc_thumb_coords)]
-    corresp_ihc_thumb_coords[0], corresp_ihc_thumb_coords[2] = corresp_ihc_thumb_coords[2], corresp_ihc_thumb_coords[0]
+    # corresp_ihc_thumb_coords = [ihc_thumb.width - corresp_ihc_thumb_coords[i + 1] if i % 2 == 0 else corresp_ihc_thumb_coords[i - 1] for i, coord in
+    #                             enumerate(corresp_ihc_thumb_coords)]
+    # corresp_ihc_thumb_coords[0], corresp_ihc_thumb_coords[2] = corresp_ihc_thumb_coords[2], corresp_ihc_thumb_coords[0]
     # ihc_thumb_coords = [coord // x_ratio if i % 2 == 0 else coord // y_ratio for i, coord in enumerate(corresp_ihc_thumb_coords)]
-    extract_and_show_patch(ihc_slide, ihc_thumb, rotation_mat, thumb_coords=corresp_ihc_thumb_coords, prefix='ihc_')
+    extract_and_show_patch(ihc_slide, ihc_thumb, rotation_angle=rotation_angle, thumb_coords=corresp_ihc_thumb_coords, prefix='ihc_')
 
 
 if __name__ == '__main__':
