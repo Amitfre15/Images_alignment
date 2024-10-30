@@ -17,10 +17,18 @@ def load_image(path):
 
 # Initialize paths
 # folder = '../5 samples/Marked/'
-folder = os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2')
-thumb_HE = '0030_0_thumb_17-8750_2_10_a_labeled.jpg'
-thumb_Her2 = '0000_0_thumb_17-8750_2_10_d_labeled.jpg'
-output_mapping_file = f'map_HE_{thumb_HE[13:-4]}_to_Her2_{thumb_Her2[13:-4]}.png'
+folder = os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'Marked', '17-9612_1_8')
+
+# thumb_HE = '0030_0_thumb_17-8750_2_10_a_labeled.png'
+# thumb_HE = '0030_0_thumb_17-8750_2_10_a_over_labeled.png'
+# thumb_HE = '0030_0_thumb_17-8750_2_10_a.png'
+thumb_HE = '0031_0_thumb_17-9612_1_8_a.png'
+
+# thumb_Her2 = '0000_0_thumb_17-8750_2_10_d_labeled.png'
+# thumb_Her2 = '0000_0_thumb_17-8750_2_10_d_over_labeled.png'
+# thumb_Her2 = '0000_0_thumb_17-8750_2_10_d.png'
+thumb_Her2 = '0001_0_thumb_17-9612_1_8_d.png'
+output_mapping_file = os.path.join(folder, f'map_HE_{thumb_HE[13:-4]}_to_Her2_{thumb_Her2[13:-4]}.png')
 
 # Load images
 im_HE = load_image(os.path.join(folder, thumb_HE))
@@ -40,11 +48,12 @@ if display:
     display_image(im_Her2, "Her2 Image")
 
 # Find landmarks in H&E thumb
-color_landmark = np.array([0.0156863, 0.2, 1])
+color_landmark = np.array([0.0156863, 0.2, 1])  # (4, 51, 255)
 # For each pixel, measure its distance from color_landmark
 dist_HE = np.sqrt(np.sum((im_HE - color_landmark) ** 2, axis=2))
 
-th = 0.03
+# th = 0.03
+th = 0.001
 dist_HE_b = dist_HE < th  # % distance < th should be true for the pixels of the landmarks
 dist_HE_b = binary_opening(dist_HE_b, disk(1))  # remove small noise pixels
 
@@ -264,7 +273,7 @@ for i in range(len(tri.simplices)):
     im_transformed[y_curr, x_curr, 0] = im_Her2[y_transformed, x_transformed, 0]  # Red channel
     im_transformed[y_curr, x_curr, 1] = im_Her2[y_transformed, x_transformed, 1]  # Green channel
     im_transformed[y_curr, x_curr, 2] = im_Her2[y_transformed, x_transformed, 2]  # Blue channel
-    display_image(im_transformed[min_y - 700:max_y + 700, :], "Transformed Her2 on H&E")
+    # display_image(im_transformed[min_y - 700:max_y + 700, :], "Transformed Her2 on H&E")
 
     im_map[y_curr, x_curr, 0] = im_XY[y_transformed, x_transformed, 0]
     im_map[y_curr, x_curr, 1] = im_XY[y_transformed, x_transformed, 1]
@@ -287,12 +296,17 @@ if display:
 
 # Save mapping result as a 16-bit PNG image
 # im_map_uint16 = np.clip(im_map * 65535, 0, 65535).astype(np.uint16)  # unnecessary
+# Convert the image to 8-bit unsigned integers
+img_16bit = im_map.astype(np.uint16)
 
-im_map_uint16 = im_map.astype(np.uint16)
-# im_map_uint16 = cv2.cvtColor(im_map, cv2.COLOR_RGB2BGR).astype(np.uint16)
-cv2.imwrite(output_mapping_file, im_map_uint16)
+# Now you can use cv2.cvtColor
+bgr_im_map = cv2.cvtColor(img_16bit, cv2.COLOR_RGB2BGR)
+
+# im_map_uint16 = im_map.astype(np.uint16)
+# cv2.imwrite(output_mapping_file, im_map_uint16)
+cv2.imwrite(output_mapping_file, bgr_im_map)
 
 # Verify the saved file
 im_map_uint16_rec = cv2.imread(output_mapping_file, cv2.IMREAD_UNCHANGED)
-if not np.array_equal(im_map_uint16, im_map_uint16_rec):
+if not np.array_equal(bgr_im_map, im_map_uint16_rec):
     print("Warning: The saved mapping file does not match the original.")

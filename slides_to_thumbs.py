@@ -153,6 +153,7 @@ def extract_padded_slide_patch(padded_slide_coords: list, slide, patch_width: in
     padded_slide_height = padded_slide_coords[3] - padded_slide_coords[1]
     slide_patch = slide.read_region((padded_slide_coords[0], padded_slide_coords[1]), 0,
                                     (padded_slide_width, padded_slide_height))
+    # slide_patch.show(title="Slide Patch")
     angle_rad = math.radians(rotation_angle)
     actual_pad_width = (slide_patch.width - patch_width) // 2
     actual_pad_height = (slide_patch.height - patch_height) // 2
@@ -161,6 +162,7 @@ def extract_padded_slide_patch(padded_slide_coords: list, slide, patch_width: in
                actual_pad_width, slide_patch.height - actual_pad_height,
                slide_patch.width - actual_pad_width, slide_patch.height - actual_pad_height]
     slide_patch = slide_patch.rotate(rotation_angle, expand=True)
+    # slide_patch.show(title="Slide Patch")
 
     return slide_patch, corners
 
@@ -260,12 +262,17 @@ def main():
     mpp_x = float(h_e_slide.properties.get('openslide.mpp-x'))
     mpp_y = float(h_e_slide.properties.get('openslide.mpp-y'))
 
-    # qupath_location = (5500, 28750)
-    # qupath_location = (5500, 28000)
+    # qupath_location = (5500, 28750)  # 20-10015 slides
+    # qupath_location = (5500, 28000)  # 20-10015 slides
     # qupath_location = (5000, 26500)  # 20-10015 slides
     # qupath_location = (4300, 29100)  # 17-8750 slides
     # qupath_location = (4150, 29000)  # 17-8750 slides
-    qupath_location = (3000, 29000)  # 17-8750 slides
+    # qupath_location = (3000, 29000)  # 17-8750 slides
+    # qupath_location = (4700, 31000)  # 17-8750 slides
+    # qupath_location = (5200, 33700)  # 17-8750 slides
+    # qupath_location = (7850, 36100)  # 17-8750 slides
+    qupath_location = (11400, 30700)  # 17-8750 slides
+    # qupath_location = (12230, 30880)  # 17-8750 slides
     openslide_location = (round(qupath_location[0] / mpp_x) + x_origin, round(qupath_location[1] / mpp_y) + y_origin)
     mpp_scale_factor = DESIRED_MPP / mpp_x
     scaled_patch_size = int(SLIDE_PATCH_SIZE * mpp_scale_factor)
@@ -281,8 +288,10 @@ def main():
     slide_coords = tuple(list(openslide_location) + [cor + scaled_patch_size for cor in openslide_location])
     # rotation_img = cv2.imread(os.path.join('slides_to_amit', 'map_HE_20-10015_1_1_e_to_Her2_20-10015_1_1_m.png'), cv2.IMREAD_UNCHANGED)
     # rotation_img = cv2.imread(os.path.join('slides_to_amit2', '17-8750_2_10', 'map_HE_17-8750_2_10_a_to_Her2_17-8750_2_10_d.png'), cv2.IMREAD_UNCHANGED)
-    rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_labeled_to_Her2_17-8750_2_10_d_labeled.png'), cv2.IMREAD_UNCHANGED)
-    # rotation_img = cv2.cvtColor(rotation_img, cv2.COLOR_BGR2RGB)
+    # rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_labeled_to_Her2_17-8750_2_10_d_labeled.png'), cv2.IMREAD_UNCHANGED)
+    rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_over_labeled_to_Her2_17-8750_2_10_d_over_labeled.png'), cv2.IMREAD_UNCHANGED)
+    # rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_to_Her2_17-8750_2_10_d.png'), cv2.IMREAD_UNCHANGED)
+    rotation_img = cv2.cvtColor(rotation_img, cv2.COLOR_BGR2RGB)
     rotation_mat = np.array(rotation_img).transpose(1, 0, 2)
 
     thumb_coords = extract_and_show_patch(h_e_slide, thumb, rotation_mat=rotation_mat, slide_coords=slide_coords)
@@ -298,7 +307,7 @@ def main():
     # ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_m.mrxs'))
     ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_d.mrxs'))
     # ihc_thumb = Image.open(os.path.join('slides_to_amit', '0004_0_thumb_20-10015_1_1_m.jpg'))
-    ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0000_0_thumb_17-8750_2_10_d_labeled.jpg'))
+    ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0000_0_thumb_17-8750_2_10_d.jpg'))
     x_ratio = ihc_thumb.width / thumb.width
     y_ratio = ihc_thumb.height / thumb.height
     corresp_ihc_thumb_coords = [max(0, ihc_center[0] - (thumb_width // 2) * x_ratio),
