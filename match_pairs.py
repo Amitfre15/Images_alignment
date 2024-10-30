@@ -117,6 +117,95 @@ def get_rotation_matrix_90_degrees(axis, angle_deg):
     return o3d.geometry.get_rotation_matrix_from_axis_angle(rotation_vector)
 
 
+def triangulate_and_create_map(PT_HE: np.array, PT_Her2: np.array, im_HE: np.array, im_Her2: np.array,
+                               display: bool = True):
+    tri = Delaunay(PT_HE)
+
+    # Define bounding box and pixels in H&E
+    min_y, min_x = np.floor(np.min(PT_HE, axis=0)).astype(int)
+    max_y, max_x = np.ceil(np.max(PT_HE, axis=0)).astype(int)
+    y, x = np.meshgrid(np.arange(min_y, max_y), np.arange(min_x, max_x))
+    pixels = np.vstack([y.ravel(), x.ravel()]).T
+
+    # Triangle indices for H&E image
+    triangle_indices = tri.find_simplex(pixels)
+
+    # Initialize transformed image and mapping image
+    im_transformed = np.copy(im_HE)
+    im_map = np.zeros_like(im_HE)
+
+    # Create the (x, y) grid for the Her2 image
+    im_XY = np.dstack(np.meshgrid(np.arange(im_Her2.shape[1]), np.arange(im_Her2.shape[0])))
+
+    # Iterate over each triangle and compute the transformation
+    for i in range(len(tri.simplices)):
+        # Get the pixels inside the current triangle in H&E
+        tri_curr_pixels_HE = pixels[triangle_indices == i]
+
+        if len(tri_curr_pixels_HE) == 0:
+            continue
+
+        # Get the vertices of the triangle in H&E and Her2
+        tri_curr_PT_HE = PT_HE[tri.simplices[i]]
+        tri_curr_PT_Her2 = PT_Her2[tri.simplices[i]]
+
+        # Compute the affine transformation matrix between the two triangles
+        A = np.linalg.lstsq(np.hstack([tri_curr_PT_HE, np.ones((3, 1))]), tri_curr_PT_Her2, rcond=None)[0]
+
+        # Apply the transformation to the pixels of the current triangle
+        tri_curr_pixels_HE_hom = np.hstack([tri_curr_pixels_HE, np.ones((len(tri_curr_pixels_HE), 1))])
+        pixels_transformed_Her2 = np.dot(tri_curr_pixels_HE_hom, A)
+
+        # Round and clip the coordinates for image indexing
+        pixels_transformed_Her2 = np.round(pixels_transformed_Her2).astype(int)
+        pixels_transformed_Her2 = np.clip(pixels_transformed_Her2, 0, np.array(im_Her2.shape[:2]) - 1)
+
+        # Convert pixel coordinates to integer after rounding
+        y_transformed = np.round(pixels_transformed_Her2[:, 0]).astype(int)
+        x_transformed = np.round(pixels_transformed_Her2[:, 1]).astype(int)
+
+        y_curr = np.round(tri_curr_pixels_HE[:, 0]).astype(int)
+        x_curr = np.round(tri_curr_pixels_HE[:, 1]).astype(int)
+
+        # Filter out any out-of-bound indices
+        valid_mask = (x_transformed >= 0) & (x_transformed < im_Her2.shape[1]) & \
+                     (y_transformed >= 0) & (y_transformed < im_Her2.shape[0]) & \
+                     (x_curr >= 0) & (x_curr < im_HE.shape[1]) & \
+                     (y_curr >= 0) & (y_curr < im_HE.shape[0])
+
+        x_transformed = x_transformed[valid_mask]
+        y_transformed = y_transformed[valid_mask]
+        x_curr = x_curr[valid_mask]
+        y_curr = y_curr[valid_mask]
+
+        # Update the transformed image for each channel (R, G, B)
+        im_transformed[y_curr, x_curr, 0] = im_Her2[y_transformed, x_transformed, 0]  # Red channel
+        im_transformed[y_curr, x_curr, 1] = im_Her2[y_transformed, x_transformed, 1]  # Green channel
+        im_transformed[y_curr, x_curr, 2] = im_Her2[y_transformed, x_transformed, 2]  # Blue channel
+        # display_image(im_transformed[min_y - 700:max_y + 700, :], "Transformed Her2 on H&E")
+
+        im_map[y_curr, x_curr, 0] = im_XY[y_transformed, x_transformed, 0]
+        im_map[y_curr, x_curr, 1] = im_XY[y_transformed, x_transformed, 1]
+
+        # Compute the rotation (theta) and store in the blue channel
+        svd_U, _, svd_V = np.linalg.svd(A[:2, :2])
+        R_mat = np.dot(svd_U, svd_V)
+        theta = np.arctan2(R_mat[1, 0], R_mat[0, 0])
+
+        if theta < 0:
+            theta += 2 * np.pi
+
+        theta = (theta / (2 * np.pi)) * 360 * 100  # Convert to degrees and scale
+        # im_map.ravel()[ind_curr_b] = theta
+        im_map[y_curr, x_curr, 2] = theta
+
+    # Display the transformed image
+    if display:
+        display_image(im_transformed[max(min_y - 700, 0):min(max_y + 700, im_transformed.shape[0]), :], "Transformed Her2 on H&E")
+
+    return im_map
+
+
 pts_moving = S_land_Her2
 pts_fixed = S_land_HE / 2
 
@@ -190,10 +279,6 @@ knn.fit(S_land_Her2_transformed[:, :2])
 # knn.fit(best_transformed_points[:, :2])
 HE_Her2_land_mapping = knn.kneighbors(S_land_HE_3d[:, :2], return_distance=False).flatten()
 
-# Mapping for H&E and Her2
-PT_HE = S_land_HE
-PT_Her2 = S_land_Her2[HE_Her2_land_mapping]
-
 # Calculate the Euclidean distance between corresponding landmarks
 pairs_dist = np.sqrt(np.sum((S_land_Her2_transformed[HE_Her2_land_mapping] - S_land_HE_3d)**2, axis=1))
 # pairs_dist = np.sqrt(np.sum((best_transformed_points[HE_Her2_land_mapping] - S_land_HE_3d)**2, axis=1))
@@ -209,90 +294,22 @@ if np.max(pairs_dist) > th_pixels:
     print(f'There is at least one landmark pair with more than {th_pixels} distance')
 
 
-# Delaunay triangulation
-tri = Delaunay(PT_HE)
+# Mapping for H&E and Her2
+PT_HE = S_land_HE
+PT_Her2 = S_land_Her2[HE_Her2_land_mapping]
 
-# Define bounding box and pixels in H&E
-min_y, min_x = np.floor(np.min(PT_HE, axis=0)).astype(int)
-max_y, max_x = np.ceil(np.max(PT_HE, axis=0)).astype(int)
-y, x = np.meshgrid(np.arange(min_y, max_y), np.arange(min_x, max_x))
-pixels = np.vstack([y.ravel(), x.ravel()]).T
+for i in range(len(PT_HE)):
+    PT_HE_tmp = np.vstack((PT_HE[:i], PT_HE[i + 1:]))
+    PT_Her2_tmp = np.vstack((PT_Her2[:i], PT_Her2[i + 1:]))
+    im_map_tmp = triangulate_and_create_map(PT_HE=PT_HE_tmp, PT_Her2=PT_Her2_tmp, im_HE=im_HE, im_Her2=im_Her2)
+    true_match = PT_Her2[i]
+    mapped_pair = im_map_tmp[int(PT_HE[i][0]), int(PT_HE[i][1])][:2][::-1]  # reverse the coordinate order
+    # if the mapped pair is zeros than it was out of the mapping
+    if not np.allclose(mapped_pair, np.zeros_like(mapped_pair.shape), atol=1e-8):
+        map_dist = np.sqrt(np.sum((true_match - mapped_pair) ** 2))
 
-# Triangle indices for H&E image
-triangle_indices = tri.find_simplex(pixels)
 
-# Initialize transformed image and mapping image
-im_transformed = np.copy(im_HE)
-im_map = np.zeros_like(im_HE)
-
-# Create the (x, y) grid for the Her2 image
-im_XY = np.dstack(np.meshgrid(np.arange(im_Her2.shape[1]), np.arange(im_Her2.shape[0])))
-
-# Iterate over each triangle and compute the transformation
-for i in range(len(tri.simplices)):
-    # Get the pixels inside the current triangle in H&E
-    tri_curr_pixels_HE = pixels[triangle_indices == i]
-
-    if len(tri_curr_pixels_HE) == 0:
-        continue
-
-    # Get the vertices of the triangle in H&E and Her2
-    tri_curr_PT_HE = PT_HE[tri.simplices[i]]
-    tri_curr_PT_Her2 = PT_Her2[tri.simplices[i]]
-
-    # Compute the affine transformation matrix between the two triangles
-    A = np.linalg.lstsq(np.hstack([tri_curr_PT_HE, np.ones((3, 1))]), tri_curr_PT_Her2, rcond=None)[0]
-
-    # Apply the transformation to the pixels of the current triangle
-    tri_curr_pixels_HE_hom = np.hstack([tri_curr_pixels_HE, np.ones((len(tri_curr_pixels_HE), 1))])
-    pixels_transformed_Her2 = np.dot(tri_curr_pixels_HE_hom, A)
-
-    # Round and clip the coordinates for image indexing
-    pixels_transformed_Her2 = np.round(pixels_transformed_Her2).astype(int)
-    pixels_transformed_Her2 = np.clip(pixels_transformed_Her2, 0, np.array(im_Her2.shape[:2]) - 1)
-
-    # Convert pixel coordinates to integer after rounding
-    y_transformed = np.round(pixels_transformed_Her2[:, 0]).astype(int)
-    x_transformed = np.round(pixels_transformed_Her2[:, 1]).astype(int)
-
-    y_curr = np.round(tri_curr_pixels_HE[:, 0]).astype(int)
-    x_curr = np.round(tri_curr_pixels_HE[:, 1]).astype(int)
-
-    # Filter out any out-of-bound indices
-    valid_mask = (x_transformed >= 0) & (x_transformed < im_Her2.shape[1]) & \
-                 (y_transformed >= 0) & (y_transformed < im_Her2.shape[0]) & \
-                 (x_curr >= 0) & (x_curr < im_HE.shape[1]) & \
-                 (y_curr >= 0) & (y_curr < im_HE.shape[0])
-
-    x_transformed = x_transformed[valid_mask]
-    y_transformed = y_transformed[valid_mask]
-    x_curr = x_curr[valid_mask]
-    y_curr = y_curr[valid_mask]
-
-    # Update the transformed image for each channel (R, G, B)
-    im_transformed[y_curr, x_curr, 0] = im_Her2[y_transformed, x_transformed, 0]  # Red channel
-    im_transformed[y_curr, x_curr, 1] = im_Her2[y_transformed, x_transformed, 1]  # Green channel
-    im_transformed[y_curr, x_curr, 2] = im_Her2[y_transformed, x_transformed, 2]  # Blue channel
-    # display_image(im_transformed[min_y - 700:max_y + 700, :], "Transformed Her2 on H&E")
-
-    im_map[y_curr, x_curr, 0] = im_XY[y_transformed, x_transformed, 0]
-    im_map[y_curr, x_curr, 1] = im_XY[y_transformed, x_transformed, 1]
-
-    # Compute the rotation (theta) and store in the blue channel
-    svd_U, _, svd_V = np.linalg.svd(A[:2, :2])
-    R_mat = np.dot(svd_U, svd_V)
-    theta = np.arctan2(R_mat[1, 0], R_mat[0, 0])
-
-    if theta < 0:
-        theta += 2 * np.pi
-
-    theta = (theta / (2 * np.pi)) * 360 * 100  # Convert to degrees and scale
-    # im_map.ravel()[ind_curr_b] = theta
-    im_map[y_curr, x_curr, 2] = theta
-
-# Display the transformed image
-if display:
-    display_image(im_transformed[min_y-700:max_y+700, :], "Transformed Her2 on H&E")
+im_map = triangulate_and_create_map(PT_HE=PT_HE, PT_Her2=PT_Her2, im_HE=im_HE, im_Her2=im_Her2)
 
 # Save mapping result as a 16-bit PNG image
 # im_map_uint16 = np.clip(im_map * 65535, 0, 65535).astype(np.uint16)  # unnecessary
