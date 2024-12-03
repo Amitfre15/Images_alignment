@@ -5,9 +5,10 @@ from PIL import Image
 import cv2
 
 OPENSLIDE_PATH = r"C:\Program Files\openslide-bin-4.0.0.3-windows-x64\openslide-bin-4.0.0.3-windows-x64\bin"
-DESIRED_MPP = 0.5
-# SLIDE_PATCH_SIZE = 256
-SLIDE_PATCH_SIZE = 4000
+# DESIRED_MPP = 0.5
+DESIRED_MPP = 1
+SLIDE_PATCH_SIZE = 256
+# SLIDE_PATCH_SIZE = 4000
 
 if hasattr(os, 'add_dll_directory'):
     # Windows
@@ -253,9 +254,11 @@ def extract_and_show_patch(slide, thumb, rotation_mat=None, rotation_angle=None,
 
 def main():
     # h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_e.mrxs'))
-    h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_a.mrxs'))
+    # h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_a.mrxs'))
+    h_e_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '21-163_3_9_d.mrxs'))
     # thumb = Image.open(os.path.join('slides_to_amit', '0081_0_thumb_20-10015_1_1_e.jpg'))
-    thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0030_0_thumb_17-8750_2_10_a.jpg'))
+    # thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0030_0_thumb_17-8750_2_10_a.jpg'))
+    thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0053_0_thumb_21-163_3_9_d.jpg'))
 
     x_origin = int(h_e_slide.properties.get('openslide.bounds-x'))
     y_origin = int(h_e_slide.properties.get('openslide.bounds-y'))
@@ -265,14 +268,19 @@ def main():
     # qupath_location = (5500, 28750)  # 20-10015 slides
     # qupath_location = (5500, 28000)  # 20-10015 slides
     # qupath_location = (5000, 26500)  # 20-10015 slides
+
     # qupath_location = (4300, 29100)  # 17-8750 slides
     # qupath_location = (4150, 29000)  # 17-8750 slides
-    # qupath_location = (3000, 29000)  # 17-8750 slides
+    # qupath_location = (2975, 29270)  # 17-8750 slides
     # qupath_location = (4700, 31000)  # 17-8750 slides
     # qupath_location = (5200, 33700)  # 17-8750 slides
     # qupath_location = (7850, 36100)  # 17-8750 slides
-    qupath_location = (11400, 30700)  # 17-8750 slides
+    # qupath_location = (11400, 30700)  # 17-8750 slides
     # qupath_location = (12230, 30880)  # 17-8750 slides
+
+    # qupath_location = (16000, 10900)  # 21-163 slides
+    qupath_location = (3900, 12250)  # 21-163 slides
+    qupath_location = (8650, 6800)  # 21-163 slides
     openslide_location = (round(qupath_location[0] / mpp_x) + x_origin, round(qupath_location[1] / mpp_y) + y_origin)
     mpp_scale_factor = DESIRED_MPP / mpp_x
     scaled_patch_size = int(SLIDE_PATCH_SIZE * mpp_scale_factor)
@@ -289,8 +297,8 @@ def main():
     # rotation_img = cv2.imread(os.path.join('slides_to_amit', 'map_HE_20-10015_1_1_e_to_Her2_20-10015_1_1_m.png'), cv2.IMREAD_UNCHANGED)
     # rotation_img = cv2.imread(os.path.join('slides_to_amit2', '17-8750_2_10', 'map_HE_17-8750_2_10_a_to_Her2_17-8750_2_10_d.png'), cv2.IMREAD_UNCHANGED)
     # rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_labeled_to_Her2_17-8750_2_10_d_labeled.png'), cv2.IMREAD_UNCHANGED)
-    rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_over_labeled_to_Her2_17-8750_2_10_d_over_labeled.png'), cv2.IMREAD_UNCHANGED)
     # rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_17-8750_2_10_a_to_Her2_17-8750_2_10_d.png'), cv2.IMREAD_UNCHANGED)
+    rotation_img = cv2.imread(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'map_HE_21-163_3_9_d_to_Her2_21-163_3_9_f.png'), cv2.IMREAD_UNCHANGED)
     rotation_img = cv2.cvtColor(rotation_img, cv2.COLOR_BGR2RGB)
     rotation_mat = np.array(rotation_img).transpose(1, 0, 2)
 
@@ -305,9 +313,11 @@ def main():
 
     # IHC
     # ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit', '20-10015_1_1_m.mrxs'))
-    ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_d.mrxs'))
+    # ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '17-8750_2_10_d.mrxs'))
+    ihc_slide = openslide.OpenSlide(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '21-163_3_9_f.mrxs'))
     # ihc_thumb = Image.open(os.path.join('slides_to_amit', '0004_0_thumb_20-10015_1_1_m.jpg'))
-    ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0000_0_thumb_17-8750_2_10_d.jpg'))
+    # ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0000_0_thumb_17-8750_2_10_d.jpg'))
+    ihc_thumb = Image.open(os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', '0028_0_thumb_21-163_3_9_f.jpg'))
     x_ratio = ihc_thumb.width / thumb.width
     y_ratio = ihc_thumb.height / thumb.height
     corresp_ihc_thumb_coords = [max(0, ihc_center[0] - (thumb_width // 2) * x_ratio),
