@@ -43,6 +43,9 @@ def load_and_display_thumbs(folder_path: str, HE_thumb_name: str, Her2_thumb_nam
     im_Her2 = load_image(os.path.join(folder_path, Her2_thumb_name))
     im_Her2_copy = load_image(os.path.join(folder_path, Her2_thumb_copy_name))
 
+    if im_Her2.shape != im_Her2_copy.shape:
+        im_HE, im_Her2 = im_Her2, im_HE
+
     if display:
         display_image(im_HE, f"H&E Image - {dir_name}")
         display_image(im_Her2, "Her2 Image")
@@ -221,7 +224,7 @@ def find_and_apply_best_trnsfrm(S_land_HE_3d: np.array, S_land_Her2_3d: np.array
     return S_land_HE_transformed, best_fitness, best_rot_lo, best_transformation, best_trans_init_rotated, best_translation
 
 
-def create_rigid_map(PT_HE: np.array, PT_Her2: np.array, im_HE: np.array, im_Her2: np.array, best_trnsfrm, trans_init_rotated, translation,
+def create_rigid_map(PT_HE: np.array, PT_Her2: np.array, im_HE: np.array, im_Her2: np.array, dir_name: str,
                      display: bool = True):
     # Define bounding box and pixels in H&E
     min_y, min_x = np.floor(np.min(PT_HE, axis=0)).astype(int)
@@ -302,7 +305,7 @@ def create_rigid_map(PT_HE: np.array, PT_Her2: np.array, im_HE: np.array, im_Her
     # Display the transformed image
     if display:
         display_image(im_transformed[max(min_y - 700, 0):min(max_y + 700, im_transformed.shape[0]), :],
-                      "Transformed Her2 on H&E")
+                      f"Transformed Her2 on H&E - {dir_name}")
 
     return im_map
 
@@ -606,16 +609,16 @@ def show_dist_plot(tri_dist: list, rigid_dist: list):
     plt.show()
 
 
-def show_dist_hist(tri_dist: dict, rigid_dist: dict):
+def show_dist_hist(rigid_dist: dict):
     final_tri_dists, final_rigid_dists = {}, {}
-    for k in tri_dist.keys():
-        final_tri_dists[k] = list(tri_dist[k].values())[-1]
+    for k in rigid_dist.keys():
+        # final_tri_dists[k] = list(tri_dist[k].values())[-1]
         if any(np.array(list(rigid_dist[k].values())) > 100):
             print(f'k = {k}, v.values() = {rigid_dist[k].values()}')
         final_rigid_dists[k] = list(rigid_dist[k].values())[-1] if len(rigid_dist[k].values()) > 0 else list(rigid_dist[k].values())
 
 
-    np_final_tri = np.array(list(final_tri_dists.values())) / HER2_PATCH_SIZE
+    # np_final_tri = np.array(list(final_tri_dists.values())) / HER2_PATCH_SIZE
     np_final_rigid = np.array(list(final_rigid_dists.values())) / HER2_PATCH_SIZE
 
     # tri_dist, rigid_dist = np.array(tri_dist), np.array(rigid_dist)
@@ -628,7 +631,7 @@ def show_dist_hist(tri_dist: dict, rigid_dist: dict):
 
     # Create histograms
     plt.figure(figsize=(10, 6))
-    plt.hist(np_final_tri, bins=10, alpha=0.5, label='Triangulation distances', color='blue')
+    # plt.hist(np_final_tri, bins=10, alpha=0.5, label='Triangulation distances', color='blue')
     plt.hist(np_final_rigid, bins=10, alpha=0.5, label='Rigid Transformation distances', color='orange')
 
     # Plot mean and max lines for tri_dist
@@ -649,10 +652,10 @@ def show_dist_hist(tri_dist: dict, rigid_dist: dict):
     plt.show()
 
 
-def show_mean_dist_area_prop(tri_data_dict: dict, rigid_data_dict: dict, avg_dirs: bool = False, show_area: bool = False):
+def show_mean_dist_area_prop(rigid_data_dict: dict, avg_dirs: bool = False, show_area: bool = False):
     if not avg_dirs:
         # Calculate rows needed for two columns
-        num_dirs = len(tri_data_dict)
+        num_dirs = len(rigid_data_dict)
         ncols = 2
         nrows = math.ceil(num_dirs / ncols)
 
@@ -664,7 +667,8 @@ def show_mean_dist_area_prop(tri_data_dict: dict, rigid_data_dict: dict, avg_dir
         axes = axes.flatten()
 
         # Plot each directory's data
-        for i, (directory, values) in enumerate(tri_data_dict.items()):
+        # for i, (directory, values) in enumerate(tri_data_dict.items()):
+        for i, (directory, values) in enumerate(rigid_data_dict.items()):
             rigid_values = rigid_data_dict[directory]
             ax = axes[i]
 
@@ -708,27 +712,28 @@ def show_mean_dist_area_prop(tri_data_dict: dict, rigid_data_dict: dict, avg_dir
         # Plot each directory's data
         # for i, (directory, values) in enumerate(tri_data_dict.items()):
         for i, (directory, values) in enumerate(rigid_data_dict.items()):
-            rigid_values = rigid_data_dict[directory]
+            # rigid_values = rigid_data_dict[directory]
 
             # Extract data for plotting
             num_points = list(values.keys())
             for n in num_points:
-                if n not in tri_distances:
-                    tri_distances[n] = []
-                if show_area:
-                    tri_distances[n].append(values[n][0] / HER2_PATCH_SIZE)  # proportion out of 13px patch
-                    if n not in area_proportions:
-                        area_proportions[n] = []
-                    area_proportions[n].append(values[n][1])
-                else:
-                    # tri_distances[n].append(values[n] / HER2_PATCH_SIZE) if n == MIN_OUTER_POINTS \
-                    #     else tri_distances[n].append((values[n] - values[MIN_OUTER_POINTS]) / HER2_PATCH_SIZE)
-                    pass
+                # if n not in tri_distances:
+                #     tri_distances[n] = []
+                # if show_area:
+                #     # proportion out of IHC thumb scale patch size
+                #     tri_distances[n].append(values[n][0] / HER2_PATCH_SIZE)
+                #     if n not in area_proportions:
+                #         area_proportions[n] = []
+                #     area_proportions[n].append(values[n][1])
+                # else:
+                #     # tri_distances[n].append(values[n] / HER2_PATCH_SIZE) if n == MIN_OUTER_POINTS \
+                #     #     else tri_distances[n].append((values[n] - values[MIN_OUTER_POINTS]) / HER2_PATCH_SIZE)
+                #     pass
 
                 if n not in rigid_distances:
                     rigid_distances[n] = []
-                rigid_distances[n].append(rigid_values[n] / HER2_PATCH_SIZE) if n == MIN_OUTER_POINTS \
-                        else rigid_distances[n].append((rigid_values[n] - rigid_values[MIN_OUTER_POINTS]) / HER2_PATCH_SIZE)
+                rigid_distances[n].append(values[n] / HER2_PATCH_SIZE) if n == MIN_OUTER_POINTS \
+                        else rigid_distances[n].append((values[n] - values[MIN_OUTER_POINTS]) / HER2_PATCH_SIZE)
 
         # num_points = list(tri_distances.keys())
         num_points = list(rigid_distances.keys())
@@ -834,7 +839,7 @@ def rotate_back_annotation_img(im_Her2: np.array, im_Her2_copy: np.array, displa
     return im_Her2
 
 
-def match_landmarks(S_land_HE_3d: np.array, S_land_Her2_3d: np.array):
+def match_landmarks(S_land_HE_3d: np.array, S_land_Her2_3d: np.array, display: bool = False):
     # Find rigid transformation using ICP
     trnsfrm_fitness = 0
     max_dist = math.inf
@@ -847,7 +852,7 @@ def match_landmarks(S_land_HE_3d: np.array, S_land_Her2_3d: np.array):
     while (trnsfrm_fitness < 0.9 or max_dist > th_pixels or has_duplicates) and curr_icp_thresh > 50:
         curr_icp_thresh -= 50
         best_results = find_and_apply_best_trnsfrm(S_land_HE_3d=S_land_HE_3d, S_land_Her2_3d=S_land_Her2_3d,
-                                                   icp_threhold=curr_icp_thresh, display=True)
+                                                   icp_threhold=curr_icp_thresh, display=display)
 
         S_land_HE_transformed, trnsfrm_fitness, best_trnsfrm = best_results[0], best_results[1], best_results[3]
         trans_init_rotated, translation = best_results[4], best_results[5]
@@ -906,19 +911,21 @@ def main():
 
     display = False
 
-    # marked_folder_path = os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'Marked')
     marked_folder_path = os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'Marked', 'png_thumb_pairs_karin')
-    tri_dist_path = os.path.join(marked_folder_path, 'tri_one_out_LS.json')
+    # marked_folder_path = os.path.join('slides_to_amit2', 'match_thumbs_HE_Her2', 'Marked', 'OneDrive_1_20-01-2025')
+    # tri_dist_path = os.path.join(marked_folder_path, 'tri_one_out_LS.json')
     rigid_dist_path = os.path.join(marked_folder_path, 'rigid_one_out_LS.json')
 
 
     # tri_dist, rigid_dist = [], []
-    tri_dist, rigid_dist = init_dist_dict(tri_dist_path), init_dist_dict(rigid_dist_path)
+    # tri_dist, rigid_dist = init_dist_dict(tri_dist_path), init_dist_dict(rigid_dist_path)
+    rigid_dist = init_dist_dict(rigid_dist_path)
 
     try:
         for ind, dir in enumerate(os.listdir(marked_folder_path)):
             print(f'dir = {dir}')
-            if dir in tri_dist:
+            # if dir in tri_dist:
+            if dir in rigid_dist:
                 print(f'Directory already done')
                 continue
             # if dir != '21-2244_1_1':
@@ -927,11 +934,13 @@ def main():
             # Initialize paths
             folder = os.path.join(marked_folder_path, dir)
             if not os.path.isdir(folder):
+                print(f'{dir} is not a directory')
                 continue
 
             png_images = list(filter(lambda x: x.endswith('.png') and not x.startswith('map'), os.listdir(folder)))
             if len(png_images) < 2:
-                tri_dist[dir] = 'Directory does not contain enough images'
+                # tri_dist[dir] = 'Directory does not contain enough images'
+                rigid_dist[dir] = 'Directory does not contain enough images'
                 print('Directory does not contain enough images')
                 continue
 
@@ -946,7 +955,7 @@ def main():
                                                                                         HE_thumb_name=thumb_HE,
                                                                                         Her2_thumb_name=thumb_Her2,
                                                                                         Her2_thumb_copy_name=thumb_Her2_copy,
-                                                                                        display=True)
+                                                                                        display=False)
 
             im_Her2 = rotate_back_annotation_img(im_Her2=im_Her2, im_Her2_copy=im_Her2_copy, display=False)
             if type(im_Her2) is int:
@@ -957,16 +966,16 @@ def main():
             color_landmark = np.array([0.0, 0.470588, 0.843137])  # (0, 120, 215) - Photos default
             # color_landmark = np.array([0.0, 0.0, 0.0]) if ind > 17 else np.array([0.0156863, 0.2, 1])  # (4, 51, 255)
             try:
-                S_land_HE, S_land_Her2 = landmark_detection(im_HE=im_HE, im_Her2=im_Her2, color_landmark=color_landmark)
+                S_land_HE, S_land_Her2 = landmark_detection(im_HE=im_HE, im_Her2=im_Her2, color_landmark=color_landmark, display=False)
                 if len(S_land_HE) == 0:  # try other landmark color (black)
                     S_land_HE, S_land_Her2 = landmark_detection(im_HE=im_HE, im_Her2=im_Her2, color_landmark=np.array([0.0, 0.0, 0.0]))
             except ValueError as e:
-                tri_dist[dir] = str(e)
+                rigid_dist[dir] = str(e)
                 print(e)
                 continue
 
             if len(S_land_HE) < 6:
-                tri_dist[dir] = f'Insufficient landmark count: {len(S_land_HE)}'
+                rigid_dist[dir] = f'Insufficient landmark count: {len(S_land_HE)}'
                 print(f'Insufficient landmark count: {len(S_land_HE)}')
                 continue
 
@@ -984,12 +993,13 @@ def main():
                                f'Initial H&E Landmarks - {dir}', 'Her2 Landmarks')
 
             HE_Her2_land_mapping, pairs_dist, best_trnsfrm, trans_init_rotated, translation = match_landmarks(S_land_HE_3d=S_land_HE_3d,
-                                                                                                              S_land_Her2_3d=S_land_Her2_3d)
+                                                                                                              S_land_Her2_3d=S_land_Her2_3d,
+                                                                                                              display=True)
             # Check for duplicate elements
             _, counts = np.unique(HE_Her2_land_mapping, return_counts=True)
             has_duplicates = np.any(counts > 1)
             if has_duplicates:
-                tri_dist[dir] = f"HE_Her2_land_mapping has correspondence overlap: {HE_Her2_land_mapping}"
+                rigid_dist[dir] = f"HE_Her2_land_mapping has correspondence overlap: {HE_Her2_land_mapping}"
                 print(f"HE_Her2_land_mapping has correspondence overlap: {HE_Her2_land_mapping}")
                 continue
 
@@ -1012,7 +1022,7 @@ def main():
                                                                       inner_points_indices=inner_points_indices,
                                                                       metric_point_index=metric_point_index)
                 if dir not in rigid_dist:
-                    tri_dist[dir] = curr_tri_dist
+                    # tri_dist[dir] = curr_tri_dist
                     rigid_dist[dir] = curr_rigid_dist
                 else:
                     for k in rigid_dist[dir].keys():
@@ -1021,8 +1031,7 @@ def main():
             for k in rigid_dist[dir].keys():
                 rigid_dist[dir][k] = np.mean(rigid_dist[dir][k])
 
-            im_map = create_rigid_map(PT_HE=PT_HE, PT_Her2=PT_Her2, im_HE=im_HE, im_Her2=im_Her2, best_trnsfrm=best_trnsfrm,
-                                      trans_init_rotated=trans_init_rotated, translation=translation)
+            im_map = create_rigid_map(PT_HE=PT_HE, PT_Her2=PT_Her2, im_HE=im_HE, im_Her2=im_Her2, dir_name=dir)
             # im_map = triangulate_and_create_map(PT_HE=PT_HE, PT_Her2=PT_Her2, im_HE=im_HE, im_Her2=im_Her2)
             #
             # Convert the image to 8-bit unsigned integers
@@ -1038,16 +1047,18 @@ def main():
             if not np.array_equal(bgr_im_map, im_map_uint16_rec):
                 print("Warning: The saved mapping file does not match the original.")
 
-        tri_dist_to_plot = {key: value for key, value in tri_dist.items() if not isinstance(value, str)}
+        dist_to_plot = {key: value for key, value in rigid_dist.items() if not isinstance(value, str)}
+        issue_dirs = {key: value for key, value in rigid_dist.items() if isinstance(value, str)}
+        print(issue_dirs)
         # show_dist_plot(tri_dist=tri_dist, rigid_dist=rigid_dist)
-        show_mean_dist_area_prop(tri_data_dict=tri_dist_to_plot, rigid_data_dict=rigid_dist, avg_dirs=True)
-        show_dist_hist(tri_dist=tri_dist_to_plot, rigid_dist=rigid_dist)
+        show_mean_dist_area_prop(rigid_data_dict=dist_to_plot, avg_dirs=True)
+        show_dist_hist(rigid_dist=dist_to_plot)
 
     except BaseException as e:
         traceback.print_exc()
     finally:
-        with open(tri_dist_path, "w") as f:
-            json.dump(tri_dist, f, indent=4)
+        # with open(tri_dist_path, "w") as f:
+        #     json.dump(tri_dist, f, indent=4)
         with open(rigid_dist_path, "w") as f:
             json.dump(rigid_dist, f, indent=4)
 
