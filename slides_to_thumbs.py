@@ -586,16 +586,16 @@ def main():
     # find_matching_window_score(window_name=, score_matrix_dir=)
     # slide_scores_csv_path = os.path.join('excel_files', 'sw_slide_scores.csv')
 
-    # sigma = 'sigma1'
-    # weighted_score_mat_dir = os.path.join('weighted_score_matrices', sigma)
+    sigma = 'sigma1'
+    weighted_score_mat_dir = os.path.join('weighted_score_matrices', sigma)
 
-    slides_and_thumbs_path = os.path.join('slides_and_thumbs')
-    npz_files = list(filter(lambda x: x.endswith('.npz'), os.listdir('slides_and_thumbs')))
-    # for w_path in os.listdir(weighted_score_mat_dir):
-    for w_path in npz_files:
-        if w_path == "21-2989_1_1_m_score_matrix.npz":
-            # full_mat_path = os.path.join(weighted_score_mat_dir, w_path)
-            full_mat_path = os.path.join(slides_and_thumbs_path, w_path)
+    # slides_and_thumbs_path = os.path.join('slides_and_thumbs')
+    # npz_files = list(filter(lambda x: x.endswith('.npz'), os.listdir('slides_and_thumbs')))
+    for w_path in os.listdir(weighted_score_mat_dir):
+    # for w_path in npz_files:
+        if w_path == "20-13136_1_1_m_score_matrix.npz":
+            full_mat_path = os.path.join(weighted_score_mat_dir, w_path)
+            # full_mat_path = os.path.join(slides_and_thumbs_path, w_path)
             loaded_matrix = np.load(full_mat_path)['arr_0']
             # show_score_matrix(loaded_matrix[3990: 4100, 480:590], slide_name='')
             show_score_matrix(loaded_matrix, slide_name=w_path.split('\\')[-1].split('_score')[0])

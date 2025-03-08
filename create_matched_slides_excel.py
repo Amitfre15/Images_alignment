@@ -162,40 +162,56 @@ def update_excel_file(file_path: str, save_file: str, output_dirs):
     print(f"Updated file '{save_file}' has been created.")
 
 
-def compute_metrics(file_path, label_col, score_col):
-    her2_df = pd.read_csv(file_path)
-    valid_indices = her2_df.index[
-        (her2_df[label_col] != "Missing Data") & (~her2_df[score_col].isna())].tolist()
-    y_true = her2_df[label_col][valid_indices].values.astype(float)
-    y_scores = her2_df[score_col][valid_indices].values
-    # multiclass
-    if len(np.unique(y_true)) > 2:
-        # Case 1: [0, 0.5, 1] vs [2, 3]
-        binary_labels_case1 = np.isin(y_true, [2, 3]).astype(int)
-        show_roc_and_calc_auc(y_true=binary_labels_case1, y_scores=y_scores, score_title=f'[0, 0.5, 1] vs [2, 3] {score_col}')
-        # Case 2: [0, 0.5, 1, 2] vs [3]
-        binary_labels_case2 = np.isin(y_true, [3]).astype(int)
-        show_roc_and_calc_auc(y_true=binary_labels_case2, y_scores=y_scores, score_title=f'[0, 0.5, 1, 2] vs [3] {score_col}')
+def compute_metrics(file_paths, label_cols, score_cols, plot_labels, save_dir=None):
+    y_trues1, y_trues2, y_scores = [], [], []
+    for file_path, label_col, score_col in zip(file_paths, label_cols, score_cols):
+        her2_df = pd.read_csv(file_path)
+        valid_indices = her2_df.index[
+            (her2_df[label_col] != "Missing Data") & (~her2_df[score_col].isna())].tolist()
+        y_true = her2_df[label_col][valid_indices].values.astype(float)
+        # multiclass
+        if len(np.unique(y_true)) > 2:
+            # Case 1: [0, 0.5, 1] vs [2, 3]
+            binary_labels_case1 = np.isin(y_true, [2, 3]).astype(int)
+            y_trues1.append(binary_labels_case1)
+            # Case 2: [0, 0.5, 1, 2] vs [3]
+            binary_labels_case2 = np.isin(y_true, [3]).astype(int)
+            y_trues2.append(binary_labels_case2)
+        else:
+            y_trues1.append(y_true)
+        y_score = her2_df[score_col][valid_indices].values
+        y_scores.append(y_score)
+
+    if len(y_trues2) > 0:
+        show_roc_and_calc_auc(y_trues=y_trues1, y_scores=y_scores, score_title=f'[0, 0.5, 1] vs [2, 3] {score_cols[0]}',
+                              plot_labels=plot_labels, save_dir=save_dir)
+        show_roc_and_calc_auc(y_trues=y_trues2, y_scores=y_scores, score_title=f'[0, 0.5, 1, 2] vs [3] {score_cols[0]}',
+                              plot_labels=plot_labels, save_dir=save_dir)
     else:
-        show_roc_and_calc_auc(y_true=y_true, y_scores=y_scores, score_title=score_col)
+        show_roc_and_calc_auc(y_trues=y_trues1, y_scores=y_scores, score_title=score_cols[0], plot_labels=plot_labels,
+                              save_dir=save_dir)
 
 
-def show_roc_and_calc_auc(y_true, y_scores, score_title):
-    # Calculate the ROC curve
-    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-
-    # Calculate AUROC
-    roc_auc = auc(fpr, tpr)
-
-    # Plot ROC Curve
+def show_roc_and_calc_auc(y_trues, y_scores, score_title, plot_labels, save_dir=None):
     plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='blue', label=f'ROC curve (AUC = {roc_auc:.4f})')
-    plt.plot([0, 1], [0, 1], color='gray', linestyle='--')  # Diagonal line
+    for y_true, y_score, plot_label in zip(y_trues, y_scores, plot_labels):
+        # Calculate the ROC curve
+        fpr, tpr, thresholds = roc_curve(y_true, y_score)
+
+        # Calculate AUROC
+        roc_auc = auc(fpr, tpr)
+
+        # Plot ROC Curve
+        plt.plot(fpr, tpr, label=f'{plot_label} ROC curve (AUC = {roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='gray', linestyle='--')  # Diagonal line
+
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title(f'{score_title} ROC Curve')
     plt.legend(loc='lower right')
     plt.grid()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f'{score_title} ROC Curve.png'), dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -204,28 +220,32 @@ def main():
     parser = argparse.ArgumentParser(description="Search and replace file names and content based on Excel mapping.")
     # parser.add_argument('-r', '--root', required=True, help='Root directory to search for files.')
     parser.add_argument('-u', '--update_file', action='store_true', help='Whether to update the file')
-    parser.add_argument('-f', '--file_path', required=True, type=str, help='Excel file to update')
+    parser.add_argument('-f', '--file_paths', required=True, nargs='+', help='Excel file to update')
     parser.add_argument('-sf', '--second_file_path', type=str, help='Second excel file to update')
+    parser.add_argument('-sd', '--save_dir', type=str, help='Directory to save metrics plots')
     parser.add_argument('-c', '--compute_metrics', action='store_true', help='Whether to compute metrics')
-    parser.add_argument('-l', '--label_column', type=str, help='Name of the label column in the file')
-    parser.add_argument('-s', '--score_column', type=str, help='Name of the predicted score column')
+    parser.add_argument('-pl', '--plot_labels', nargs='+', help='Curve labels to show in the metrics plot')
+    parser.add_argument('-l', '--label_column', nargs='+', help='Name of the label column in the file')
+    parser.add_argument('-s', '--score_column', nargs='+', help='Name of the predicted score column')
     # parser.add_argument('-a', '--add_columns', nargs='+', help='Names of columns to add')
     parser.add_argument('-fr', '--from_columns', nargs='+', help='Names of columns to take values from')
     parser.add_argument('-m', '--mark_matches', action='store_true', help='Whether to mark existing blocks')
     parser.add_argument('-p', '--patient_df_update', action='store_true', help='Whether to update patient df')
 
+    # example command: -f ./excel_files/Her2_slides_matched_HE_folds_infer.csv -sf ./excel_files/carmel_per_block_marked.xlsx -fr IHC_to_Her2_score IHC_to_Her2_status HE_to_Her2_score HE_to_Her2_status -p
     args = parser.parse_args()
     print(f'args = {args}')
 
     # her2_csv_path = os.path.join(os.getcwd(), 'workspace', 'WSI', 'metadata_csvs', 'Her2_slides_matched_HE_folds.csv')
-    her2_csv_path = args.file_path
+    her2_csv_path = args.file_paths
     if args.update_file:
         update_excel_file(file_path=her2_csv_path)
 
     # her2_csv_path = os.path.join('excel_files', 'Her2_slides_matched_HE_folds_infer.csv')
     if args.compute_metrics:
         if args.label_column is not None and args.score_column is not None:
-            compute_metrics(file_path=her2_csv_path, label_col=args.label_column, score_col=args.score_column)
+            compute_metrics(file_paths=her2_csv_path, label_cols=args.label_column, score_cols=args.score_column,
+                            plot_labels=args.plot_labels, save_dir=args.save_dir)
         else:
             print(f'Please specify label_column and score_column for metrics calculation.\n'
                   f'label_column = {args.label_column}, score_column = {args.score_column}')
