@@ -70,14 +70,10 @@ def mark_matching_blocks(file_path: str, my_file_path: str, save_file: str):
 
 def update_excel_file(file_path: str, save_file: str, output_dirs):
     # Load the Excel files into DataFrames
-    # her2_df = pd.read_excel('Her2_slides_info.xlsx')
-    # her2_df = pd.read_excel('Her2_slides_info_with_matches_corrected.xlsx')
     if file_path.endswith('xlsx'):
         her2_df = pd.read_excel(file_path)
     else:
         her2_df = pd.read_csv(file_path)
-
-    # he_df = pd.read_excel('HE_slides_info.xlsx')
 
     # dirs = ['IHC_to_Her2_score', 'IHC_to_Her2_status', 'HE_to_Her2_score', 'HE_to_Her2_status']
     # batch_path = 'slides_data_HER2'
@@ -90,73 +86,25 @@ def update_excel_file(file_path: str, save_file: str, output_dirs):
         op_dir_w_cfg = os.path.join(full_output_dir, config)
         infer_dirs = [d for d in os.listdir(op_dir_w_cfg) if 'infer' in d and not d.endswith('.out')]
         print(f'infer_dirs = {infer_dirs}')
-        # for i in range(1, 7):
         for idir in infer_dirs:
             csv_path = os.path.join(full_output_dir, config, idir, f'eval_pretrained_{config}', 'inference_results',
                                     'slide_scores.csv')
-            # batch_dfs.append(pd.read_excel(f'{batch_path}_{i}.xlsx'))
             batch_dfs[output_dir].append(pd.read_csv(csv_path))
             print(f'batch_dfs[output_dir] = {batch_dfs[output_dir]}')
         batch_dfs[output_dir] = pd.concat(batch_dfs[output_dir], ignore_index=True)[['slide_name', 'score']]
-    # batch_df = pd.concat(batch_dfs, ignore_index=True)[['file', 'patient barcode', 'MPP', 'Her2 score']]
-    # # Drop rows where any column contains the value
-    # batch_df = batch_df[~batch_df.isin(['Missing Data']).any(axis=1)]
     her2_df.dropna(inplace=True)
-
-    # Create new columns to store the matched HE slide names and paths
-    # her2_df['patient barcode'] = ''
-    # her2_df['MPP'] = ''
-    # her2_df['Her2 score'] = ''
-    # her2_df['fold idx'] = ''
 
     # Iterate over each file in the Her2 DataFrame
     for i, her2_row in her2_df.iterrows():
-        # her2_name_base = get_name_without_last_char(her2_row['SlideName'])
-
         # Find all matching HE slides with the same base name
-        # he_matches = he_df[he_df['SlideName'].str.startswith(her2_name_base)]
         for key, batch_df in batch_dfs.items():
             slide_key = "SlideName" if key.startswith('IHC') else "Matched_HE_SlideName"
             her2_slidename = her2_row[slide_key]
             batch_matches = batch_df[batch_df['slide_name'].str.startswith(her2_slidename.split('.')[0])]
 
-            # if not he_matches.empty:
             if not batch_matches.empty:
-                # # Find the most lexicographically similar last letter
-                # last_letter_her2 = her2_row['SlideName'][-6]  # Last letter before .mrxs
-                # closest_he_row = \
-                # min(he_matches.iterrows(), key=lambda x: abs(ord(x[1]['SlideName'][-6]) - ord(last_letter_her2)))[1]
-
-                # # Store the matched HE slide name and path in the Her2 DataFrame
-                # her2_df.at[i, 'Matched_HE_SlideName'] = closest_he_row['SlideName']
-                # her2_df.at[i, 'Matched_HE_Path'] = closest_he_row['Path']
-                # her2_df.at[i, 'patient barcode'] = batch_matches['patient barcode'].values[0]
-                # her2_df.at[i, 'MPP'] = batch_matches['MPP'].values[0]
-                # her2_df.at[i, 'Her2 score'] = batch_matches['Her2 score'].values[0]
                 her2_df.at[i, key] = batch_matches['score'].values[0]
 
-    # Split the df to folds
-    # # 1. Get unique patient barcodes
-    # unique_patients = her2_df['patient barcode'].unique()
-    #
-    # # 2. Shuffle the patient barcodes
-    # np.random.seed(42)  # For reproducibility
-    # np.random.shuffle(unique_patients)
-    #
-    # # 3. Assign folds
-    # num_patients = len(unique_patients)
-    # train_cutoff = int(num_patients * 0.75)
-    #
-    # # First 75% for training (folds 1-5), last 25% for testing (fold 6)
-    # folds = {patient: (i % 5 + 1 if i < train_cutoff else 6) for i, patient in enumerate(unique_patients)}
-    #
-    # # 4. Map the fold indices back to the DataFrame
-    # her2_df['fold idx'] = her2_df['patient barcode'].map(folds)
-
-    # Save the updated Her2 DataFrame to the output file
-    # output_file = 'Her2_slides_info_with_matches_corrected.xlsx'
-    # output_file = 'Her2_slides_matched_HE_folds_infer.csv'
-    # her2_df.to_excel(output_file, index=False)
     her2_df.to_csv(save_file, index=False)
 
     print(f"Updated file '{save_file}' has been created.")
@@ -220,6 +168,8 @@ def main():
     parser = argparse.ArgumentParser(description="Search and replace file names and content based on Excel mapping.")
     # parser.add_argument('-r', '--root', required=True, help='Root directory to search for files.')
     parser.add_argument('-u', '--update_file', action='store_true', help='Whether to update the file')
+    parser.add_argument('-sp', '--save_path', type=str, help='Path to save the updated file')
+    parser.add_argument('-od', '--output_dirs', required=True, nargs='+', help='Output dirs from which to take output files')
     parser.add_argument('-f', '--file_paths', required=True, nargs='+', help='Excel file to update')
     parser.add_argument('-sf', '--second_file_path', type=str, help='Second excel file to update')
     parser.add_argument('-sd', '--save_dir', type=str, help='Directory to save metrics plots')
@@ -239,7 +189,7 @@ def main():
     # her2_csv_path = os.path.join(os.getcwd(), 'workspace', 'WSI', 'metadata_csvs', 'Her2_slides_matched_HE_folds.csv')
     her2_csv_path = args.file_paths
     if args.update_file:
-        update_excel_file(file_path=her2_csv_path)
+        update_excel_file(file_path=her2_csv_path, save_file=args.save_path, output_dirs=args.output_dirs)
 
     # her2_csv_path = os.path.join('excel_files', 'Her2_slides_matched_HE_folds_infer.csv')
     if args.compute_metrics:
